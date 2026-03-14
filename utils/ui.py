@@ -39,30 +39,40 @@ def print_banner() -> None:
     console.print(sub, justify="center")
     console.print()
 
-    api_key = os.environ.get("XBL_API_KEY", "")
-    webhook  = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    def key_row(label: str, env_var: str, color: str = "bright_green") -> Text:
+        val = os.environ.get(env_var, "")
+        t = Text()
+        if val:
+            t.append("  ✓ ", style="bold bright_green")
+            t.append(f"{label} loaded", style=color)
+        else:
+            t.append("  ✗ ", style="bold red")
+            t.append(f"{label} not set  ", style="red")
+            t.append(f"(set {env_var})", style="dim yellow")
+        return t
 
-    api_status = Text()
-    if api_key:
-        api_status.append("  ✓ ", style="bold bright_green")
-        api_status.append("xbl.io API key loaded", style="bright_green")
+    steam_row = Text()
+    if os.environ.get("STEAM_API_KEY", ""):
+        steam_row.append("  ✓ ", style="bold bright_green")
+        steam_row.append("Steam API key loaded", style="bright_blue")
     else:
-        api_status.append("  ✗ ", style="bold red")
-        api_status.append("xbl.io API key NOT set  ", style="red")
-        api_status.append("(set XBL_API_KEY env var)", style="dim yellow")
+        steam_row.append("  ✓ ", style="bold bright_green")
+        steam_row.append("Steam  ", style="bright_blue")
+        steam_row.append("(no key needed — uses public profiles)", style="dim cyan")
 
-    wh_status = Text()
-    if webhook:
-        wh_status.append("  ✓ ", style="bold bright_green")
-        wh_status.append("Discord webhook loaded", style="bright_green")
-    else:
-        wh_status.append("  ✗ ", style="bold yellow")
-        wh_status.append("Discord webhook not set  ", style="yellow")
-        wh_status.append("(set DISCORD_WEBHOOK_URL env var)", style="dim yellow")
+    rows = (
+        key_row("xbl.io API key",        "XBL_API_KEY")
+        + Text("\n")
+        + steam_row
+        + Text("\n")
+        + key_row("Discord webhook (Xbox channel)",  "DISCORD_WEBHOOK_URL",  "bright_magenta")
+        + Text("\n")
+        + key_row("Discord webhook (Steam channel)", "STEAM_WEBHOOK_URL",    "bright_blue")
+    )
 
     console.print(
         Panel(
-            api_status + Text("\n") + wh_status,
+            rows,
             border_style="bright_cyan",
             box=box.ROUNDED,
             padding=(0, 2),
