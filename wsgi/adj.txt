@@ -1,0 +1,35 @@
+#A list of adjectives to be used in name generation
+#lines starting with '#' will be ignored
+slimey
+squishy
+wet
+obsessive
+fuzzy
+soggy
+moist
+soapy
+yummy
+funny
+silly
+fat
+skinny
+slim
+buttered
+saucy
+hairy
+casual
+sexy
+confused
+arbitrary
+sideways
+spikey
+wide
+narrow
+thick
+thin
+mean
+controlling
+floaty
+lightweight
+awkward
+
