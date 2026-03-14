@@ -15,6 +15,12 @@ PLATFORM_WEBHOOK_CONFIG: dict[str, tuple[str, str, int, str]] = {
         0x1B2838,
         "Steam Username Scanner",
     ),
+    "roblox": (
+        "ROBLOX_WEBHOOK_URL",
+        "✅ Available Roblox Username Found",
+        0xFF3E3E,
+        "Roblox Username Scanner",
+    ),
 }
 
 
