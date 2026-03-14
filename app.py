@@ -11,13 +11,33 @@ from rich.table import Table
 from rich import box
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 
-from checker import check_xbox_username, post_discord
+from checker import check_xbox_username, check_steam_username, post_platform_discord
 from utils import generate_username, ask, ask_yn, print_banner
 
 console = Console()
 
+PLATFORM_CHECKERS = {
+    "xbox":  check_xbox_username,
+    "steam": check_steam_username,
+}
 
-def scan_settings() -> tuple[int, int, str, bool]:
+PLATFORM_KEY_VARS = {
+    "xbox":  "XBL_API_KEY",
+    "steam": "STEAM_API_KEY",
+}
+
+PLATFORM_COLORS = {
+    "xbox":  "bright_green",
+    "steam": "bright_blue",
+}
+
+PLATFORM_LABELS = {
+    "xbox":  "Xbox",
+    "steam": "Steam",
+}
+
+
+def scan_settings() -> tuple[int, int, str, list[str], bool]:
     console.print(Rule("[bold bright_cyan]Scan Settings[/]", style="bright_cyan"))
     console.print()
 
@@ -34,6 +54,21 @@ def scan_settings() -> tuple[int, int, str, bool]:
         count = 20
 
     console.print()
+    console.print(Text("  Platforms to check:", style="dim white"))
+    platforms: list[str] = []
+    for pid, label in PLATFORM_LABELS.items():
+        if pid == "steam":
+            default = "y"
+        else:
+            key_set = bool(os.environ.get(PLATFORM_KEY_VARS.get(pid, ""), ""))
+            default = "y" if key_set else "n"
+        if ask_yn(f"Check {label}", default):
+            platforms.append(pid)
+
+    if not platforms:
+        platforms = ["xbox"]
+
+    console.print()
     console.print(Text("  Character set to use:", style="dim white"))
     use_letters = ask_yn("Include letters (a-z)", "y")
     use_numbers = ask_yn("Include numbers (0-9)", "y")
@@ -47,9 +82,21 @@ def scan_settings() -> tuple[int, int, str, bool]:
     if not charset:
         charset = string.ascii_lowercase
 
-    if os.environ.get("DISCORD_WEBHOOK_URL"):
-        console.print(Text("  Discord webhook loaded from environment.", style="dim white"))
-        console.print()
+    WEBHOOK_VARS   = {"xbox": "DISCORD_WEBHOOK_URL", "steam": "STEAM_WEBHOOK_URL"}
+    WEBHOOK_LABELS = {"xbox": "Discord webhook (Xbox channel)", "steam": "Discord webhook (Steam channel)"}
+    for pid in platforms:
+        env_var = WEBHOOK_VARS.get(pid, "")
+        label   = WEBHOOK_LABELS.get(pid, pid)
+        t = Text()
+        if os.environ.get(env_var, ""):
+            t.append("  ✓ ", style="bold bright_green")
+            t.append(f"{label} loaded", style="dim white")
+        else:
+            t.append("  ✗ ", style="dim yellow")
+            t.append(f"{label} not set ", style="dim yellow")
+            t.append(f"(set {env_var})", style="dim")
+        console.print(t)
+    console.print()
 
     charset_parts = []
     if use_letters:
@@ -58,22 +105,26 @@ def scan_settings() -> tuple[int, int, str, bool]:
         charset_parts.append("0-9")
     charset_label = " + ".join(charset_parts) or "a-z"
 
+    platform_label = " + ".join(PLATFORM_LABELS[p] for p in platforms)
+
     console.print(Rule("[bold bright_cyan]Ready to scan[/]", style="bright_cyan"))
     summary = Text()
-    summary.append("  Length: ",  style="dim white")
-    summary.append(str(length),   style="bold bright_cyan")
-    summary.append("    Count: ", style="dim white")
-    summary.append(str(count),    style="bold bright_cyan")
+    summary.append("  Length: ",    style="dim white")
+    summary.append(str(length),     style="bold bright_cyan")
+    summary.append("    Count: ",   style="dim white")
+    summary.append(str(count),      style="bold bright_cyan")
     summary.append("    Charset: ", style="dim white")
-    summary.append(charset_label, style="bold bright_cyan")
+    summary.append(charset_label,   style="bold bright_cyan")
+    summary.append("    Platforms: ", style="dim white")
+    summary.append(platform_label,  style="bold bright_cyan")
     console.print(Panel(summary, border_style="bright_cyan", box=box.ROUNDED, padding=(0, 1)))
     console.print()
 
     go = ask_yn("Start scanning now", "y")
-    return length, count, charset, go
+    return length, count, charset, platforms, go
 
 
-def run_scan(length: int, count: int, charset: str) -> list[str]:
+def run_scan(length: int, count: int, charset: str, platforms: list[str]) -> list[str]:
     found: list[str] = []
     checked = 0
     seen: set[str] = set()
@@ -111,30 +162,51 @@ def run_scan(length: int, count: int, charset: str) -> list[str]:
                 username = generate_username(length, charset)
             seen.add(username)
 
-            available, err = check_xbox_username(username)
+            all_available = True
+            had_error = False
 
-            if err == "rate_limit":
-                rate_wait = 2.5
-                progress.update(task, status="[yellow]⏸[/]", last_user=username)
-                continue
-            elif err == "no_key":
-                console.print()
-                t = Text()
-                t.append("  [", style="dim")
-                t.append("!", style="bold yellow")
-                t.append("] XBL_API_KEY not set — add it in Secrets to enable checking.", style="yellow")
-                console.print(t)
-                return found
-            elif err:
-                progress.update(task, status="[red]✗[/]", last_user=username)
-                checked += 1
-                progress.advance(task)
-                time.sleep(0.1)
+            for pid in platforms:
+                checker_fn = PLATFORM_CHECKERS[pid]
+                available, err = checker_fn(username)
+
+                if err == "rate_limit":
+                    rate_wait = 2.5
+                    progress.update(task, status="[yellow]⏸[/]", last_user=username)
+                    had_error = True
+                    break
+                elif err == "no_key":
+                    label = PLATFORM_LABELS[pid]
+                    var   = PLATFORM_KEY_VARS[pid]
+                    console.print()
+                    t = Text()
+                    t.append("  [", style="dim")
+                    t.append("!", style="bold yellow")
+                    t.append(f"] {label}: {var} not set — skipping platform.", style="yellow")
+                    console.print(t)
+                    platforms = [p for p in platforms if p != pid]
+                    if not platforms:
+                        return found
+                    had_error = True
+                    break
+                elif err:
+                    progress.update(task, status="[red]✗[/]", last_user=username)
+                    had_error = True
+                    break
+                elif not available:
+                    all_available = False
+                    break
+
+            if had_error:
+                if rate_wait == 0:
+                    checked += 1
+                    progress.advance(task)
+                    time.sleep(0.1)
                 continue
 
-            if available:
+            if all_available:
                 found.append(username)
-                post_discord(username)
+                for pid in platforms:
+                    post_platform_discord(username, pid)
                 progress.update(
                     task,
                     status="[bold bright_green]✓[/]",
@@ -151,7 +223,7 @@ def run_scan(length: int, count: int, charset: str) -> list[str]:
     return found
 
 
-def show_found(found: list[str]) -> None:
+def show_found(found: list[str], platforms: list[str]) -> None:
     console.print()
     if not found:
         t = Text()
@@ -161,17 +233,29 @@ def show_found(found: list[str]) -> None:
         console.print(t)
         return
 
-    console.print(Rule(f"[bold bright_green]Found {len(found)} Available Username(s)[/]", style="bright_green"))
+    platform_label = " + ".join(PLATFORM_LABELS[p] for p in platforms)
+    console.print(Rule(
+        f"[bold bright_green]Found {len(found)} Available on {platform_label}[/]",
+        style="bright_green",
+    ))
     console.print()
 
     table = Table(box=box.SIMPLE, border_style="dim white", show_header=False, padding=(0, 3))
-    table.add_column("Username", style="bold bright_green")
-    table.add_column("Length",   style="dim cyan")
-    table.add_column("Webhook",  style="dim white")
+    table.add_column("Username",  style="bold bright_green")
+    table.add_column("Length",    style="dim cyan")
+    table.add_column("Platforms", style="dim white")
+    table.add_column("Webhook",   style="dim white")
 
-    wh_note = "✓ posted to Discord" if os.environ.get("DISCORD_WEBHOOK_URL") else "—"
+    WEBHOOK_VARS = {"xbox": "DISCORD_WEBHOOK_URL", "steam": "STEAM_WEBHOOK_URL"}
+    posted_to = [p.title() for p in platforms if os.environ.get(WEBHOOK_VARS.get(p, ""), "")]
+    wh_note = ("✓ " + ", ".join(posted_to)) if posted_to else "—"
     for u in found:
-        table.add_row(u, f"{len(u)} chars", wh_note)
+        table.add_row(
+            u,
+            f"{len(u)} chars",
+            platform_label,
+            wh_note,
+        )
 
     console.print(table)
     console.print()
@@ -181,7 +265,7 @@ def main() -> None:
     print_banner()
 
     while True:
-        length, count, charset, go = scan_settings()
+        length, count, charset, platforms, go = scan_settings()
 
         if not go:
             console.print()
@@ -193,8 +277,8 @@ def main() -> None:
             console.print()
             continue
 
-        found = run_scan(length, count, charset)
-        show_found(found)
+        found = run_scan(length, count, charset, platforms)
+        show_found(found, platforms)
 
         if not ask_yn("Run another scan", "y"):
             console.print()
