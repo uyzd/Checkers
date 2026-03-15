@@ -33,9 +33,9 @@ def print_banner() -> None:
     console.print(art, justify="center")
 
     sub = Text()
-    sub.append("Xbox Live Username Scanner", style="bold bright_green")
+    sub.append("Username Scanner", style="bold bright_green")
     sub.append("  ·  ", style="dim white")
-    sub.append("Checks availability & posts to Discord", style="dim cyan")
+    sub.append("Xbox · Steam · Roblox · Discord  →  posts to Discord", style="dim cyan")
     console.print(sub, justify="center")
     console.print()
 
@@ -51,23 +51,33 @@ def print_banner() -> None:
             t.append(f"(set {env_var})", style="dim yellow")
         return t
 
-    steam_row = Text()
-    if os.environ.get("STEAM_API_KEY", ""):
-        steam_row.append("  ✓ ", style="bold bright_green")
-        steam_row.append("Steam API key loaded", style="bright_blue")
-    else:
-        steam_row.append("  ✓ ", style="bold bright_green")
-        steam_row.append("Steam  ", style="bright_blue")
-        steam_row.append("(no key needed — uses public profiles)", style="dim cyan")
+    def optional_row(label: str, env_var: str, no_key_note: str, color: str) -> Text:
+        t = Text()
+        if os.environ.get(env_var, ""):
+            t.append("  ✓ ", style="bold bright_green")
+            t.append(f"{label} loaded", style=color)
+        else:
+            t.append("  ✓ ", style="bold bright_green")
+            t.append(f"{label}  ", style=color)
+            t.append(f"({no_key_note})", style="dim cyan")
+        return t
 
     rows = (
-        key_row("xbl.io API key",        "XBL_API_KEY")
+        key_row("xbl.io API key",                    "XBL_API_KEY")
         + Text("\n")
-        + steam_row
+        + optional_row("Steam",   "STEAM_API_KEY",  "no key needed — uses public profiles", "bright_blue")
         + Text("\n")
-        + key_row("Discord webhook (Xbox channel)",  "DISCORD_WEBHOOK_URL",  "bright_magenta")
+        + optional_row("Roblox",  "ROBLOX_COOKIE",  "no key needed — optional cookie for rate limits", "bright_red")
         + Text("\n")
-        + key_row("Discord webhook (Steam channel)", "STEAM_WEBHOOK_URL",    "bright_blue")
+        + key_row("Discord token",                   "DISCORD_TOKEN",           "light_violet")
+        + Text("\n")
+        + key_row("Discord webhook (Xbox channel)",   "DISCORD_WEBHOOK_URL",     "bright_magenta")
+        + Text("\n")
+        + key_row("Discord webhook (Steam channel)",  "STEAM_WEBHOOK_URL",       "bright_blue")
+        + Text("\n")
+        + key_row("Discord webhook (Roblox channel)", "ROBLOX_WEBHOOK_URL",      "bright_red")
+        + Text("\n")
+        + key_row("Discord webhook (Discord channel)","DISCORD_WEBHOOK_URL_DC",  "light_violet")
     )
 
     console.print(
@@ -97,6 +107,30 @@ def ask(question: str, default: str, choices: list[str] | None = None) -> str:
     if choices:
         return raw.lower() if raw.lower() in choices else default
     return raw
+
+
+def ask_choice(question: str, options: list[tuple[str, str]], default: str) -> str:
+    t = Text()
+    t.append(f"\n  {question}\n", style="bold white")
+    console.print(t)
+    for key, desc in options:
+        mark = "bold bright_cyan" if key == default else "dim white"
+        row = Text()
+        row.append(f"    [{key}] ", style=mark)
+        row.append(desc, style="dim white" if key != default else "white")
+        console.print(row)
+    console.print()
+    t2 = Text()
+    t2.append("[ ",  style="dim white")
+    t2.append("? ",  style="bold bright_cyan")
+    t2.append("] ",  style="dim white")
+    t2.append("Choose mode", style="bold white")
+    t2.append(f" ({default})", style="bold bright_cyan")
+    t2.append(": ", style="dim white")
+    console.print(t2, end="")
+    raw = input().strip().lower()
+    valid = {k for k, _ in options}
+    return raw if raw in valid else default
 
 
 def ask_yn(question: str, default: str = "y") -> bool:
