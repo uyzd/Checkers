@@ -21,6 +21,12 @@ PLATFORM_WEBHOOK_CONFIG: dict[str, tuple[str, str, int, str]] = {
         0xFF3E3E,
         "Roblox Username Scanner",
     ),
+    "discord": (
+        "DISCORD_WEBHOOK_URL_DC",
+        "✅ Available Discord Username Found",
+        0x5865F2,
+        "Discord Username Scanner",
+    ),
 }
 
 
